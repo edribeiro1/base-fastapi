@@ -1,12 +1,14 @@
 from typing import List, Union
 
 import uvicorn
-from fastapi import Depends, FastAPI, Query, status
+from fastapi import Depends, FastAPI, HTTPException, Query, Response, status
 from sqlalchemy.orm.session import Session
 
-from src.config.db import get_db
-from src.repository.proposta_repository import PropostaRepository
-from src.schema.proposta_schema import ShowProposta
+from src.infrastructure.config.database import get_db
+from src.infrastructure.repository.proposta_repository import \
+    PropostaRepository
+from src.input_model.create_proposta import CreateProposta, InputProposta
+from src.response_model.show_proposta import ShowProposta
 
 app = FastAPI(
     title='Propostas',
@@ -23,13 +25,13 @@ app = FastAPI(
 
 @app.get(
     path='/',
+    summary='Listagem paginada de propostas',
+    description='Listagem paginada de propostas',
     status_code=status.HTTP_200_OK,
-    summary='Pegar todas as propostas',
-    description='Pegar todas as propostas',
     response_model=List[ShowProposta],
     tags=['Proposta'],
 )
-async def get_all(
+async def pagination(
     limit: int = Query(default=10, ge=1, le=1000),
     offset: int = Query(default=0, ge=0, le=1000),
     status_analise: Union[str, None] = None,
@@ -42,13 +44,39 @@ async def get_all(
 
 @app.get(
     path='/{id_proposta}',
-    status_code=status.HTTP_200_OK,
-    response_model=ShowProposta,
     summary='Pegar proposta',
     description='Pegar os detalhes da proposta por id',
+    status_code=status.HTTP_200_OK,
+    response_model=ShowProposta,
+    tags=['Proposta'],
 )
-async def get_by_id(id_proposta: int, db: Session = Depends(get_db)):
-    proposta = await PropostaRepository.get_proposta(db, id_proposta)
+async def find_by_id(id_proposta: int, db: Session = Depends(get_db)):
+    proposta = await PropostaRepository.find_by_id(db, id_proposta)
+    if not proposta:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail='Proposta não encontrada',
+        )
+    return proposta
+
+
+@app.post(
+    path='/',
+    summary='Criar proposta',
+    description='Criar uma proposta',
+    # response_class=Response,
+    status_code=status.HTTP_201_CREATED,
+    response_model=ShowProposta,
+    tags=['Proposta'],
+)
+async def create(input_proposta: InputProposta, db: Session = Depends(get_db)):
+    create_proposta = CreateProposta.parse_obj(input_proposta)
+    proposta = await PropostaRepository.create(db, create_proposta)
+    if not proposta:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail='Não foi possível criar a proposta',
+        )
     return proposta
 
 
